@@ -1,0 +1,6 @@
+secure.newegg.com
+secure.newegg.ca
+pmtcards.newegg.com
+newegg.com
+newegg.ca
+
