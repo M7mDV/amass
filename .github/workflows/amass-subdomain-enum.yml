@@ -30,14 +30,11 @@ jobs:
 
       - name: Run Amass Enumeration
         run: |
-          # في v5: -passive بيكفي، مفيش -noalts ولا -norecursive
           amass enum \
             -passive \
             -df domains.txt
           
-          # في v5 النتائج بتتخزن في SQLite DB، بنجيبها بـ amass subs
           echo "=== Extracting subdomains from DB ==="
-          # نعمل loop على كل domain في domains.txt
           while IFS= read -r domain; do
             echo "--- Subdomains for: $domain ---"
             amass subs -names -d "$domain" || true
@@ -47,55 +44,40 @@ jobs:
           cat sub-domains.txt
           echo "=== Total: $(wc -l < sub-domains.txt) subdomains ==="
 
-      - name: Send Results to Discord
+      - name: Send Results to Discord (as File)
         if: success()
         run: |
-          # لو الملف فاضي، نبعت رسالة مختلفة
-          if [ ! -s sub-domains.txt ]; then
-            curl -H "Content-Type: application/json" \
-              -X POST \
-              -d '{
-                "username": "Amass Bot",
-                "embeds": [{
-                  "title": "🔍 Subdomain Enumeration",
-                  "description": "No subdomains found!",
-                  "color": 15158332,
-                  "footer": {"text": "Amass v5 Scan"}
-                }]
-              }' \
-              ${{ secrets.DISCORD_WEBHOOK_URL }}
-            exit 0
-          fi
-          
-          RESULTS=$(cat sub-domains.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
           COUNT=$(wc -l < sub-domains.txt)
-          DOMAINS=$(cat domains.txt | sed ':a;N;$!ba;s/\n/, /g')
+          DOMAINS=$(cat domains.txt | tr '\n' ', ' | sed 's/, $//')
           
-          curl -H "Content-Type: application/json" \
-            -X POST \
-            -d '{
-              "username": "Amass Bot",
-              "avatar_url": "https://owasp.org/www-project-amass/assets/images/amass.png",
-              "embeds": [{
-                "title": "🔍 Subdomain Enumeration Results",
-                "description": "Scan completed for: **'"$DOMAINS"'**",
-                "color": 3447003,
-                "fields": [
+          # بيبعت الملف كـ attachment مع embed message
+          curl -X POST \
+            -H "Content-Type: multipart/form-data" \
+            -F "file=@sub-domains.txt" \
+            -F "payload_json={
+              \"username\": \"Amass Bot\",
+              \"avatar_url\": \"https://owasp.org/www-project-amass/assets/images/amass.png\",
+              \"embeds\": [{
+                \"title\": \"🔍 Subdomain Enumeration Results\",
+                \"description\": \"Scan completed for: **${DOMAINS}**\",
+                \"color\": 3447003,
+                \"fields\": [
                   {
-                    "name": "📊 Total Subdomains Found",
-                    "value": "'"$COUNT"'",
-                    "inline": true
+                    \"name\": \"📊 Total Subdomains Found\",
+                    \"value\": \"${COUNT}\",
+                    \"inline\": true
                   },
                   {
-                    "name": "📄 Results",
-                    "value": "```\n'"$RESULTS"'\n```"
+                    \"name\": \"📎 Attachment\",
+                    \"value\": \"sub-domains.txt\",
+                    \"inline\": true
                   }
                 ],
-                "footer": {
-                  "text": "Amass v5.1.1 • '"$(date -u +"%Y-%m-%d %H:%M UTC")"'"
+                \"footer\": {
+                  \"text\": \"Amass v5.1.1 • $(date -u +\"%Y-%m-%d %H:%M UTC\")\"
                 }
               }]
-            }' \
+            }" \
             ${{ secrets.DISCORD_WEBHOOK_URL }}
 
       - name: Upload Results as Artifact
