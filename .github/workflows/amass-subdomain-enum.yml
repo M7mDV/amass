@@ -1,0 +1,87 @@
+name: Amass Subdomain Enumeration
+
+on:
+  # يشتغل يدوياً
+  workflow_dispatch:
+  
+  # يشتغل كل يوم الساعة 3 فجراً UTC
+  schedule:
+    - cron: '0 3 * * *'
+  
+  # يشتغل لما تدفع على الـ main branch
+  push:
+    branches: [main]
+    paths:
+      - 'domains.txt'
+
+jobs:
+  enumerate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Amass
+        run: |
+          # تحميل وتثبيت Amass
+          wget -q https://github.com/OWASP/Amass/releases/latest/download/amass_linux_amd64.zip
+          unzip -q amass_linux_amd64.zip
+          sudo mv amass_linux_amd64/amass /usr/local/bin/
+          amass -version
+
+      - name: Run Amass Enumeration
+        run: |
+          # تشغيل Amass بالأمر المطلوب
+          amass enum \
+            -passive \
+            -norecursive \
+            -noalts \
+            -df domains.txt \
+            -o sub-domains.txt
+          
+          echo "=== Results ==="
+          cat sub-domains.txt
+
+      - name: Send Results to Discord
+        if: success()
+        run: |
+          # تجهيز الرسالة
+          RESULTS=$(cat sub-domains.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          COUNT=$(wc -l < sub-domains.txt)
+          DOMAINS=$(cat domains.txt | sed ':a;N;$!ba;s/\n/, /g')
+          
+          # إرسال لـ Discord
+          curl -H "Content-Type: application/json" \
+            -X POST \
+            -d '{
+              "username": "Amass Bot",
+              "avatar_url": "https://owasp.org/www-project-amass/assets/images/amass.png",
+              "embeds": [{
+                "title": "🔍 Subdomain Enumeration Results",
+                "description": "Scan completed for: **'"$DOMAINS"'**",
+                "color": 3447003,
+                "fields": [
+                  {
+                    "name": "📊 Total Subdomains Found",
+                    "value": "'"$COUNT"'",
+                    "inline": true
+                  },
+                  {
+                    "name": "📄 Results File",
+                    "value": "```\n'"$RESULTS"'\n```"
+                  }
+                ],
+                "footer": {
+                  "text": "Amass Scan • '"$(date -u +"%Y-%m-%d %H:%M UTC")"'"
+                }
+              }]
+            }' \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      - name: Upload Results as Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subdomains-results
+          path: sub-domains.txt
