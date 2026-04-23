@@ -1,14 +1,9 @@
 name: Amass Subdomain Enumeration
 
 on:
-  # يشتغل يدوياً
   workflow_dispatch:
-  
-  # يشتغل كل يوم الساعة 3 فجراً UTC
   schedule:
     - cron: '0 3 * * *'
-  
-  # يشتغل لما تدفع على الـ main branch
   push:
     branches: [main]
     paths:
@@ -22,17 +17,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
       - name: Install Amass
         run: |
-          # تحميل وتثبيت Amass
-          wget -q https://github.com/OWASP/Amass/releases/latest/download/amass_linux_amd64.zip
-          unzip -q amass_linux_amd64.zip
-          sudo mv amass_linux_amd64/amass /usr/local/bin/
+          CGO_ENABLED=0 go install -v github.com/owasp-amass/amass/v5/cmd/amass@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
           amass -version
 
       - name: Run Amass Enumeration
         run: |
-          # تشغيل Amass بالأمر المطلوب
           amass enum \
             -passive \
             -norecursive \
@@ -46,12 +43,10 @@ jobs:
       - name: Send Results to Discord
         if: success()
         run: |
-          # تجهيز الرسالة
           RESULTS=$(cat sub-domains.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
           COUNT=$(wc -l < sub-domains.txt)
           DOMAINS=$(cat domains.txt | sed ':a;N;$!ba;s/\n/, /g')
           
-          # إرسال لـ Discord
           curl -H "Content-Type: application/json" \
             -X POST \
             -d '{
@@ -68,7 +63,7 @@ jobs:
                     "inline": true
                   },
                   {
-                    "name": "📄 Results File",
+                    "name": "📄 Results",
                     "value": "```\n'"$RESULTS"'\n```"
                   }
                 ],
