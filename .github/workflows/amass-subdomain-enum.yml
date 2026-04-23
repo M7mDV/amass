@@ -30,19 +30,43 @@ jobs:
 
       - name: Run Amass Enumeration
         run: |
+          # في v5: -passive بيكفي، مفيش -noalts ولا -norecursive
           amass enum \
             -passive \
-            -norecursive \
-            -noalts \
-            -df domains.txt \
-            -o sub-domains.txt
+            -df domains.txt
+          
+          # في v5 النتائج بتتخزن في SQLite DB، بنجيبها بـ amass subs
+          echo "=== Extracting subdomains from DB ==="
+          # نعمل loop على كل domain في domains.txt
+          while IFS= read -r domain; do
+            echo "--- Subdomains for: $domain ---"
+            amass subs -names -d "$domain" || true
+          done < domains.txt | sort -u > sub-domains.txt
           
           echo "=== Results ==="
           cat sub-domains.txt
+          echo "=== Total: $(wc -l < sub-domains.txt) subdomains ==="
 
       - name: Send Results to Discord
         if: success()
         run: |
+          # لو الملف فاضي، نبعت رسالة مختلفة
+          if [ ! -s sub-domains.txt ]; then
+            curl -H "Content-Type: application/json" \
+              -X POST \
+              -d '{
+                "username": "Amass Bot",
+                "embeds": [{
+                  "title": "🔍 Subdomain Enumeration",
+                  "description": "No subdomains found!",
+                  "color": 15158332,
+                  "footer": {"text": "Amass v5 Scan"}
+                }]
+              }' \
+              ${{ secrets.DISCORD_WEBHOOK_URL }}
+            exit 0
+          fi
+          
           RESULTS=$(cat sub-domains.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
           COUNT=$(wc -l < sub-domains.txt)
           DOMAINS=$(cat domains.txt | sed ':a;N;$!ba;s/\n/, /g')
@@ -68,7 +92,7 @@ jobs:
                   }
                 ],
                 "footer": {
-                  "text": "Amass Scan • '"$(date -u +"%Y-%m-%d %H:%M UTC")"'"
+                  "text": "Amass v5.1.1 • '"$(date -u +"%Y-%m-%d %H:%M UTC")"'"
                 }
               }]
             }' \
