@@ -1,13 +1,3 @@
-www.quip.com
-spaces.pm
-slackb.com
-slackatwork.com
-slack.com
-slack-status.com
-slack-redir.net
-slack-imgs.com
-salesforce.quip.com
-apps.apple.com
-edgeapi.slack.com
-app.slack.com
-api.slack.com
+api.ovh.com
+www.ovh.com
+soyoustart.com
